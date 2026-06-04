@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>青勘3D高斯漫游平台 · 冰心纪念馆</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #05070b;
+      color: #fff;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+    }
+
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #05070b 0%, #141827 52%, #06070a 100%);
+      transition: opacity 0.8s ease-out;
+    }
+
+    #loading-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #loading-screen .logo {
+      font-size: 28px;
+      font-weight: 300;
+      letter-spacing: 4px;
+      margin-bottom: 30px;
+      color: #e8c97a;
+    }
+
+    .loader-container {
+      width: 260px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .loader-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #e8c97a, #7fd8ff);
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    #loading-text {
+      margin-top: 16px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.62);
+      letter-spacing: 1px;
+    }
+
+    #hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #hud-top {
+      position: absolute;
+      top: 20px;
+      left: 24px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      pointer-events: none;
+    }
+
+    #hud-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    #title-area,
+    #mode-indicator,
+    #resource-panel,
+    #control-panel,
+    #lasso-panel,
+    #measure-panel,
+    #help-content {
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      background: rgba(0, 0, 0, 0.42);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+    }
+
+    #title-area {
+      pointer-events: auto;
+      padding: 11px 20px 11px 14px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 560px;
+    }
+
+    #title-logo {
+      width: 320px;
+      height: auto;
+      object-fit: contain;
+      flex: 0 0 auto;
+    }
+
+    #title-area h1 {
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      color: #e8c97a;
+      white-space: nowrap;
+    }
+
+    #title-area p {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.55);
+      margin-top: 3px;
+      letter-spacing: 0.5px;
+    }
+
+    #mode-indicator {
+      pointer-events: auto;
+      padding: 9px 15px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.78);
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .dot,
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+      flex: 0 0 auto;
+    }
+
+    .dot.fly { background: #4fc3f7; box-shadow: 0 0 8px rgba(79, 195, 247, 0.55); }
+    .dot.roam { background: #e8c97a; box-shadow: 0 0 8px rgba(232, 201, 122, 0.5); }
+    .dot.walk { background: #81c784; box-shadow: 0 0 8px rgba(129, 199, 132, 0.55); }
+    .status-dot.ok { background: #81c784; box-shadow: 0 0 8px rgba(129, 199, 132, 0.55); }
+    .status-dot.warn { background: #e8c97a; box-shadow: 0 0 8px rgba(232, 201, 122, 0.5); }
+
+    #resource-panel {
+      width: 300px;
+      pointer-events: auto;
+      padding: 12px 13px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.66);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    #resource-panel.collapsed {
+      display: none;
+    }
+
+    .resource-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 9px;
+      color: rgba(255, 255, 255, 0.86);
+      font-family: inherit;
+      gap: 10px;
+    }
+
+    .resource-head span {
+      color: #e8c97a;
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 1px;
+    }
+
+    .resource-head strong {
+      font-weight: 600;
+      color: #7fd8ff;
+    }
+
+    #btn-resource-toggle {
+      pointer-events: auto;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.72);
+      padding: 7px 11px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    #btn-resource-toggle:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    .resource-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 4px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.055);
+      line-height: 1.35;
+    }
+
+    .resource-row:first-of-type { border-top: none; }
+
+    .resource-row span:first-child {
+      color: rgba(255, 255, 255, 0.42);
+      white-space: nowrap;
+    }
+
+    .resource-row span:last-child {
+      color: rgba(255, 255, 255, 0.74);
+      text-align: right;
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    .resource-meter {
+      width: 100%;
+      height: 3px;
+      margin-top: 6px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+    }
+
+    .resource-meter i {
+      display: block;
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #7fd8ff, #81c784);
+      border-radius: 3px;
+      transition: width 0.25s;
+    }
+
+    .resource-collision {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    #control-panel {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      padding: 10px 12px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      transition: opacity 0.4s, transform 0.4s;
+    }
+
+    .ctrl-btn {
+      pointer-events: auto;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.78);
+      padding: 8px 13px;
+      min-height: 34px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .ctrl-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.22);
+      color: #fff;
+    }
+
+    .ctrl-btn.active {
+      background: rgba(79, 195, 247, 0.2);
+      border-color: rgba(79, 195, 247, 0.45);
+      color: #7fd8ff;
+    }
+
+    .ctrl-btn.roam.active {
+      background: rgba(232, 201, 122, 0.18);
+      border-color: rgba(232, 201, 122, 0.45);
+      color: #f0d990;
+    }
+
+    .ctrl-btn.walk.active {
+      background: rgba(129, 199, 132, 0.2);
+      border-color: rgba(129, 199, 132, 0.45);
+      color: #9be29f;
+    }
+
+    .ctrl-btn.tool.active {
+      background: rgba(127, 216, 255, 0.2);
+      border-color: rgba(127, 216, 255, 0.48);
+      color: #9ee4ff;
+    }
+
+    .ctrl-btn .icon {
+      width: 16px;
+      display: inline-flex;
+      justify-content: center;
+      font-size: 13px;
+      line-height: 1;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .ctrl-separator {
+      width: 1px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.12);
+      margin: 0 5px;
+    }
+
+    #stats {
+      position: absolute;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.34);
+      letter-spacing: 0.5px;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    #perf-stats {
+      position: absolute;
+      bottom: 30px;
+      right: 24px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.34);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      text-align: right;
+      line-height: 1.6;
+      pointer-events: none;
+    }
+
+    #lasso-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    #lasso-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+
+    #measure-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 8;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    #measure-overlay.visible,
+    #measure-overlay.active {
+      opacity: 1;
+    }
+
+    #measure-overlay.active {
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+
+    #lasso-panel,
+    #measure-panel {
+      position: absolute;
+      left: 24px;
+      bottom: 88px;
+      width: min(330px, calc(100vw - 48px));
+      padding: 11px 13px;
+      pointer-events: none;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 12px;
+      line-height: 1.5;
+      letter-spacing: 0.5px;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    #lasso-panel.show,
+    #measure-panel.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #lasso-panel strong,
+    #measure-panel strong {
+      color: #7fd8ff;
+      font-weight: 500;
+    }
+
+    #measure-panel {
+      bottom: 132px;
+    }
+
+    #help-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s;
+    }
+
+    #help-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #help-content {
+      padding: 30px 36px;
+      max-width: 540px;
+      width: 90%;
+    }
+
+    #help-content h2 {
+      font-size: 20px;
+      font-weight: 400;
+      letter-spacing: 3px;
+      margin-bottom: 20px;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .help-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .help-row:last-of-type { border-bottom: none; }
+
+    .help-key {
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    .help-desc {
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    #help-close {
+      display: block;
+      margin: 24px auto 0;
+      background: rgba(255, 255, 255, 0.09);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.72);
+      padding: 10px 30px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+
+    #help-close:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 22px;
+      height: 22px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+      z-index: 12;
+    }
+
+    #crosshair.show { opacity: 1; }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(255, 255, 255, 0.42);
+    }
+
+    #crosshair::before {
+      width: 1px;
+      height: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    #crosshair::after {
+      width: 100%;
+      height: 1px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    #mode-transition {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      pointer-events: none;
+      background: #000;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+
+    #mode-transition.show { opacity: 1; }
+
+    @media (max-width: 760px) {
+      #hud-top {
+        top: 14px;
+        left: 14px;
+        right: 14px;
+        gap: 10px;
+      }
+
+      #title-area {
+        min-width: 0;
+        padding: 9px 11px;
+      }
+
+      #title-logo {
+        width: min(260px, 58vw);
+        height: auto;
+      }
+
+      #title-area h1 {
+        font-size: 14px;
+        white-space: normal;
+      }
+
+      #title-area p {
+        display: none;
+      }
+
+      #mode-indicator {
+        font-size: 11px;
+        padding: 8px 10px;
+      }
+
+      #resource-panel {
+        width: min(286px, calc(100vw - 28px));
+        padding: 10px;
+      }
+
+      #control-panel {
+        bottom: 18px;
+        width: calc(100vw - 20px);
+        justify-content: center;
+        padding: 7px;
+        max-width: calc(100vw - 20px);
+      }
+
+      .ctrl-btn {
+        padding: 7px 8px;
+        font-size: 10.5px;
+        gap: 4px;
+      }
+
+      .ctrl-btn .icon { width: 12px; }
+      .ctrl-separator { display: none; }
+      #stats { bottom: 74px; }
+      #perf-stats { right: 14px; bottom: 72px; }
+      #lasso-panel,
+      #measure-panel {
+        left: 14px;
+        width: calc(100vw - 28px);
+        font-size: 11px;
+      }
+
+      #lasso-panel { bottom: 78px; }
+      #measure-panel { bottom: 122px; }
+    }
+
+    @media (max-width: 540px) {
+      #hud-top {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      #hud-right {
+        align-items: stretch;
+      }
+
+      #resource-panel {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading-screen">
+    <div class="logo">青勘3D高斯漫游平台</div>
+    <div class="loader-container">
+      <div class="loader-bar" id="loader-bar"></div>
+    </div>
+    <div id="loading-text">正在加载场景...</div>
+  </div>
+
+  <div id="mode-transition"></div>
+  <div id="crosshair"></div>
+'<img id="title-logo" src="./logo-transparent-clear.png" alt="青勘">'
+  <div id="hud">
+    <div id="hud-top">
+      <div id="title-area">
+        <img id="title-logo" src="https://bingxin-3d-models.oss-cn-qingdao.aliyuncs.com/logo-transparent-clear.png" alt="青勘">
+        <div>
+          <h1>青勘3D高斯漫游平台 · 冰心纪念馆</h1>
+          <p>Bing Xin Memorial Hall · 3D Gaussian Splatting</p>
+        </div>
+      </div>
+      <div id="hud-right">
+        <div id="mode-indicator">
+          <span class="dot fly"></span>
+          <span id="mode-label">飞行视角</span>
+        </div>
+        <button id="btn-resource-toggle" type="button">隐藏性能</button>
+        <div id="resource-panel">
+          <div class="resource-head">
+            <span>资源占用</span>
+            <strong id="resource-fps">-- FPS</strong>
+          </div>
+          <div class="resource-row">
+            <span>帧时间</span>
+            <span id="resource-frame">-- ms</span>
+          </div>
+          <div class="resource-row">
+            <span>JS 内存</span>
+            <span id="resource-heap">--</span>
+          </div>
+          <div class="resource-meter"><i id="resource-heap-meter"></i></div>
+          <div class="resource-row">
+            <span>GPU/画布</span>
+            <span id="resource-gpu">--</span>
+          </div>
+          <div class="resource-row">
+            <span>高斯</span>
+            <span id="resource-splats">--</span>
+          </div>
+          <div class="resource-row">
+            <span>分页</span>
+            <span id="resource-chunks">--</span>
+          </div>
+          <div class="resource-row">
+            <span>碰撞</span>
+            <span class="resource-collision"><i id="resource-collision-dot" class="status-dot warn"></i><span id="resource-collision">--</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="stats">
+      <span id="splat-count">0</span> 高斯 · <span id="file-size">0 MB</span>
+    </div>
+
+    <div id="control-panel">
+      <button class="ctrl-btn active" id="btn-fly" title="飞行视角">
+        <span class="icon">F</span> 飞行
+      </button>
+      <button class="ctrl-btn" id="btn-roam" title="自由第一人称漫游">
+        <span class="icon">M</span> 漫游
+      </button>
+      <button class="ctrl-btn" id="btn-walk" title="碰撞步行模式">
+        <span class="icon">W</span> 步行
+      </button>
+      <div class="ctrl-separator"></div>
+      <button class="ctrl-btn tool" id="btn-lasso" title="套索保留选区">
+        <span class="icon">L</span> 套索
+      </button>
+      <button class="ctrl-btn tool" id="btn-lasso-invert" title="反裁剪选区">
+        <span class="icon">I</span> 反裁剪
+      </button>
+      <button class="ctrl-btn tool" id="btn-lasso-clear" title="清除套索裁剪">
+        <span class="icon">C</span> 清除
+      </button>
+      <div class="ctrl-separator"></div>
+      <button class="ctrl-btn tool" id="btn-measure" title="多点距离累计量测（H）">
+        <span class="icon">H</span> 量测
+      </button>
+      <div class="ctrl-separator"></div>
+      <button class="ctrl-btn" id="btn-help" title="操作帮助">
+        <span class="icon">?</span> 帮助
+      </button>
+      <button class="ctrl-btn" id="btn-home" title="复位视角">
+        <span class="icon">R</span> 复位
+      </button>
+      <button class="ctrl-btn" id="btn-fullscreen" title="全屏">
+        <span class="icon">[]</span> 全屏
+      </button>
+    </div>
+
+    <div id="perf-stats">加载中...</div>
+    <div id="lasso-panel">
+      <strong id="lasso-title">套索裁剪</strong>
+      <div id="lasso-status">按住鼠标左键圈选区域，松开后应用裁剪</div>
+    </div>
+    <div id="measure-panel">
+      <strong>距离量测</strong>
+      <div id="measure-status">点击模型表面选择第一个点</div>
+    </div>
+  </div>
+
+  <canvas id="lasso-overlay"></canvas>
+  <canvas id="measure-overlay"></canvas>
+
+  <div id="help-overlay">
+    <div id="help-content">
+      <h2>操作指南</h2>
+      <div class="help-row">
+        <span class="help-key">飞行视角</span>
+        <span class="help-desc">拖动旋转 · 滚轮缩放</span>
+      </div>
+      <div class="help-row">
+        <span class="help-key">漫游模式</span>
+        <span class="help-desc"><span class="badge">W A S D</span> 自由移动 · <span class="badge">Space</span> 上升 · <span class="badge">Ctrl</span> 下降</span>
+      </div>
+      <div class="help-row">
+        <span class="help-key">步行模式</span>
+        <span class="help-desc"><span class="badge">W A S D</span> 行走 · <span class="badge">Shift</span> 冲刺 · <span class="badge">Space</span> 跳跃</span>
+      </div>
+      <div class="help-row">
+        <span class="help-key">鼠标视角</span>
+        <span class="help-desc">步行/漫游时点击画面锁定鼠标</span>
+      </div>
+      <div class="help-row">
+        <span class="help-key">切换模式</span>
+        <span class="help-desc">点击按钮或按 <span class="badge">F</span> 依次切换</span>
+      </div>
+      <div class="help-row">
+        <span class="help-key">复位视角</span>
+        <span class="help-desc">点击复位或按 <span class="badge">R</span></span>
+      </div>
+      <button id="help-close">知道了</button>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
